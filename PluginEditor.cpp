@@ -6,6 +6,7 @@ namespace
     const juce::Colour kPanel   { 0xff1b2a4d };
     const juce::Colour kText    { 0xfff3efe4 };
     const juce::Colour kAccent  { 0xff8fb8ff };
+    const char* kVersion = "v0.4.1";
 }
 
 DoesitPitchEditor::DoesitPitchEditor(DoesitPitchProcessor& p)
@@ -117,7 +118,7 @@ void DoesitPitchEditor::paint(juce::Graphics& g)
     g.fillAll(kBg);
     g.setColour(kText);
     g.setFont(juce::FontOptions(20.0f, juce::Font::bold));
-    g.drawText("DOESIT PITCH", 20, 10, getWidth() - 40, 30, juce::Justification::centredLeft);
+    g.drawText(juce::String("DOESIT PITCH   ") + kVersion, 20, 10, getWidth() - 40, 30, juce::Justification::centredLeft);
 }
 
 void DoesitPitchEditor::resized()
