@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(DoesitPitch VERSION 0.3.0)
+project(DoesitPitch VERSION 0.4.0)
 
 # Statische Runtime, damit auf deinem PC nichts nachinstalliert werden muss
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

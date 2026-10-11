@@ -97,6 +97,14 @@ void DoesitPitchProcessor::prepareToPlay(double sampleRate, int)
     phase = 0.0f;
     srAcc = 0.0f;
     reportedLatency = -1;
+
+    // Feste Latenz (halbe maximale Grain-Groesse). Sie aendert sich nie waehrend des Spielens,
+    // damit FL die Latenzkompensation nicht neu starten muss.
+    latencyFixed = (int) std::ceil(0.05 * sampleRate);
+    setLatencySamples(latencyFixed);
+
+    grainSmooth = grainParam->load() * 0.001f * (float) sampleRate;
+    grainCoef = 1.0f - std::exp(-1.0f / (0.03f * (float) sampleRate));
 }
 
 float DoesitPitchProcessor::readAt(const std::vector<float>& b, float delay) const
@@ -132,15 +140,8 @@ void DoesitPitchProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 
     // Pitch
     const float ratio = std::pow(2.0f, semis / 12.0f);
-    const float grain = grainMs * 0.001f * sr;
-    const int latency = (int) (grain * 0.5f);
-    if (latency != reportedLatency)
-    {
-        setLatencySamples(latency);
-        reportedLatency = latency;
-    }
+    const float grainTarget = juce::jmin(grainMs * 0.001f * sr, 2.0f * (float) latencyFixed);
     const bool pitchActive = std::abs(semis) >= 0.001f;
-    const float phaseInc = (1.0f - ratio) / grain;
 
     // Sampler-Charakter
     auto onePole = [sr](float fc)
@@ -175,12 +176,18 @@ void DoesitPitchProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
         for (int ch = 0; ch < numCh; ++ch)
             delayBuf[(size_t) ch][(size_t) writePos] = buffer.getReadPointer(ch)[i];
 
+        // Grain-Groesse weich nachfuehren, damit Automation nicht ruckelt
+        grainSmooth += grainCoef * (grainTarget - grainSmooth);
+        const float grain = juce::jmax(1.0f, grainSmooth);
+        const float offset = juce::jmax(0.0f, (float) latencyFixed - grain * 0.5f);
+        const float phaseInc = (1.0f - ratio) / grain;
+
         const float pB = (phase + 0.5f >= 1.0f) ? phase - 0.5f : phase + 0.5f;
         const float sA = std::sin(kPi * phase);
         const float gA = sA * sA;
         const float gB = 1.0f - gA;
-        const float dA = phase * grain;
-        const float dB = pB * grain;
+        const float dA = phase * grain + offset;
+        const float dB = pB * grain + offset;
 
         bool tick = false;
         if (rateActive)
@@ -198,7 +205,7 @@ void DoesitPitchProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
             const auto& b = delayBuf[(size_t) ch];
             auto& st = chState[(size_t) ch];
 
-            const float dry = readAt(b, (float) latency);
+            const float dry = readAt(b, (float) latencyFixed);
             float s = pitchActive ? (readAt(b, dA) * gA + readAt(b, dB) * gB) : dry;
 
             if (machineActive)

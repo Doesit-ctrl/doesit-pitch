@@ -69,6 +69,9 @@ private:
     std::uint32_t rng = 22222u;
     double currentSampleRate = 44100.0;
     int reportedLatency = -1;
+    int latencyFixed = 0;      // feste Latenz in Samples, wird einmal gemeldet
+    float grainSmooth = 0.0f;  // geglaettete Grain-Groesse in Samples
+    float grainCoef = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DoesitPitchProcessor)
 };
