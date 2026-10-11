@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(DoesitPitch VERSION 0.1.0)
+project(DoesitPitch VERSION 0.2.0)
 
 # Statische Runtime, damit auf deinem PC nichts nachinstalliert werden muss
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -24,7 +24,9 @@ juce_add_plugin(DoesitPitch
 
 target_sources(DoesitPitch PRIVATE
     Source/PluginProcessor.cpp
-    Source/PluginProcessor.h)
+    Source/PluginProcessor.h
+    Source/PluginEditor.cpp
+    Source/PluginEditor.h)
 
 target_compile_definitions(DoesitPitch PUBLIC
     JUCE_WEB_BROWSER=0

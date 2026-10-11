@@ -1,8 +1,10 @@
-Doesit Pitch (v0.1)
-Pitch-Shifter fuer FL Studio, +/-24 Halbtoene, Tempo bleibt gleich.
+Doesit Pitch (v0.2)
+Pitch-Shifter fuer FL Studio, Tempo bleibt gleich.
 
-Parameter: Pitch (st), Grain (ms), Mix
-Kleiner Grain = gritty und lo-fi, grosser Grain = weicher.
-
-Bauen lassen: Ordner auf GitHub hochladen, Reiter "Actions", fertigen Build unter "Artifacts" herunterladen.
-Die .vst3 nach C:\Program Files\Common Files\VST3 kopieren, in FL Studio neu scannen.
+Pitch: ganze Halbtoene, -24 bis +24
+Fine: -100 bis +100 Cent
+Grain: 10 bis 100 ms (kleiner = gritty und weniger Latenz)
+Machine: Off, S20, S900, S950, S1000, S3000 (Bittiefe und Samplerate)
+Rate: Auto (Maximalrate der Maschine) oder feste Rate
+Warm: Saettigung, dunkler werdende Hoehen
+Mix: Dry/Wet

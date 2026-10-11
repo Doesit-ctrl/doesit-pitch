@@ -4,7 +4,8 @@
 #include <atomic>
 #include <vector>
 
-// Doesit Pitch: koerniger Pitch-Shifter (+/-24 Halbtoene), Tempo bleibt gleich.
+// Doesit Pitch v0.2: koerniger Pitch-Shifter (+/-24 Halbtoene plus Fine in Cent),
+// Tempo bleibt gleich. Dazu Sampler-Charakter (Bittiefe, Samplerate, Filter) und Warm-Saturation.
 class DoesitPitchProcessor : public juce::AudioProcessor
 {
 public:
@@ -33,20 +34,37 @@ public:
     void getStateInformation(juce::MemoryBlock& destData) override;
     void setStateInformation(const void* data, int sizeInBytes) override;
 
+    juce::AudioProcessorValueTreeState& getApvts() { return apvts; }
+
 private:
+    struct ChannelState
+    {
+        float aa1 = 0.0f, aa2 = 0.0f;   // Anti-Alias-Filter vor der Abtastung
+        float hold = 0.0f;              // Sample and Hold
+        float rc1 = 0.0f, rc2 = 0.0f;   // Rekonstruktionsfilter nach der Wandlung
+        float dcX = 0.0f, dcY = 0.0f;   // DC-Blocker (Warm)
+        float warmLP = 0.0f;            // Hoehendaempfung (Warm)
+    };
+
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     float readAt(const std::vector<float>& b, float delay) const;
 
     juce::AudioProcessorValueTreeState apvts;
     std::atomic<float>* pitchParam = nullptr;
+    std::atomic<float>* fineParam = nullptr;
     std::atomic<float>* grainParam = nullptr;
     std::atomic<float>* mixParam = nullptr;
+    std::atomic<float>* machineParam = nullptr;
+    std::atomic<float>* rateParam = nullptr;
+    std::atomic<float>* warmParam = nullptr;
 
     std::vector<std::vector<float>> delayBuf;
+    std::vector<ChannelState> chState;
     int bufSize = 0;
     int bufMask = 0;
     int writePos = 0;
     float phase = 0.0f;
+    float srAcc = 0.0f;
     double currentSampleRate = 44100.0;
     int reportedLatency = -1;
 
