@@ -5,8 +5,9 @@
 #include <cstdint>
 #include <vector>
 
-// Doesit Pitch v0.2: koerniger Pitch-Shifter (+/-24 Halbtoene plus Fine in Cent),
+// Doesit Pitch v0.4: koerniger Pitch-Shifter (+/-24 Halbtoene plus Fine in Cent),
 // Tempo bleibt gleich. Dazu Sampler-Charakter (Bittiefe, Samplerate, Filter) und Warm-Saturation.
+// v0.4: Grain-Aenderungen wirken nur noch beim Neustart eines Lesepunkts, damit die Automation nicht ruckelt.
 class DoesitPitchProcessor : public juce::AudioProcessor
 {
 public:
@@ -64,7 +65,10 @@ private:
     int bufSize = 0;
     int bufMask = 0;
     int writePos = 0;
-    float phase = 0.0f;
+    float phaseA = 0.0f;       // Position von Lesepunkt A im Fenster (0..1)
+    float phaseB = 0.5f;       // Position von Lesepunkt B, eine halbe Fensterlaenge versetzt
+    float lenA = 0.0f;         // Fensterlaenge von A in Samples (gilt bis zum naechsten Neustart)
+    float lenB = 0.0f;         // Fensterlaenge von B in Samples
     float srAcc = 0.0f;
     std::uint32_t rng = 22222u;
     double currentSampleRate = 44100.0;

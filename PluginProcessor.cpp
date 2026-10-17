@@ -94,7 +94,6 @@ void DoesitPitchProcessor::prepareToPlay(double sampleRate, int)
     delayBuf.assign((size_t) channels, std::vector<float>((size_t) bufSize, 0.0f));
     chState.assign((size_t) channels, ChannelState());
     writePos = 0;
-    phase = 0.0f;
     srAcc = 0.0f;
     reportedLatency = -1;
 
@@ -103,14 +102,22 @@ void DoesitPitchProcessor::prepareToPlay(double sampleRate, int)
     latencyFixed = (int) std::ceil(0.05 * sampleRate);
     setLatencySamples(latencyFixed);
 
-    grainSmooth = grainParam->load() * 0.001f * (float) sampleRate;
+    grainSmooth = juce::jmin(grainParam->load() * 0.001f * (float) sampleRate,
+                             2.0f * (float) latencyFixed);
     grainCoef = 1.0f - std::exp(-1.0f / (0.03f * (float) sampleRate));
+
+    // Zwei Lesepunkte, um eine halbe Fensterlaenge versetzt. Jeder hat seine eigene Laenge.
+    phaseA = 0.0f;
+    phaseB = 0.5f;
+    lenA = juce::jmax(16.0f, grainSmooth);
+    lenB = lenA;
 }
 
 float DoesitPitchProcessor::readAt(const std::vector<float>& b, float delay) const
 {
+    // delay liegt immer zwischen 0 und bufSize - 4 (wird vor dem Aufruf begrenzt)
     float rp = (float) writePos - delay;
-    while (rp < 0.0f)
+    if (rp < 0.0f)
         rp += (float) bufSize;
 
     int i0 = (int) rp;
@@ -140,8 +147,10 @@ void DoesitPitchProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
 
     // Pitch
     const float ratio = std::pow(2.0f, semis / 12.0f);
+    const float rate = 1.0f - ratio;   // Aenderung der Verzoegerung pro Sample (mit Vorzeichen)
     const float grainTarget = juce::jmin(grainMs * 0.001f * sr, 2.0f * (float) latencyFixed);
     const bool pitchActive = std::abs(semis) >= 0.001f;
+    const float maxDelay = (float) (bufSize - 4);
 
     // Sampler-Charakter
     auto onePole = [sr](float fc)
@@ -176,18 +185,23 @@ void DoesitPitchProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
         for (int ch = 0; ch < numCh; ++ch)
             delayBuf[(size_t) ch][(size_t) writePos] = buffer.getReadPointer(ch)[i];
 
-        // Grain-Groesse weich nachfuehren, damit Automation nicht ruckelt
+        // Zielwert der Grain-Groesse weich nachfuehren. Er wirkt erst, wenn ein Lesepunkt
+        // am Ende seines Fensters (Lautstaerke 0) neu startet, nie mitten im Fenster.
         grainSmooth += grainCoef * (grainTarget - grainSmooth);
-        const float grain = juce::jmax(1.0f, grainSmooth);
-        const float offset = juce::jmax(0.0f, (float) latencyFixed - grain * 0.5f);
-        const float phaseInc = (1.0f - ratio) / grain;
+        const float grain = juce::jmax(16.0f, grainSmooth);
 
-        const float pB = (phase + 0.5f >= 1.0f) ? phase - 0.5f : phase + 0.5f;
-        const float sA = std::sin(kPi * phase);
+        // Jeder Lesepunkt hat seine eigene Fensterlaenge (lenA, lenB), die sich nur beim Neustart aendert.
+        // Dadurch bleibt die Pitch-Geschwindigkeit immer exakt richtig, auch bei Grain-Automation.
+        const float offA = juce::jmax(0.0f, (float) latencyFixed - lenA * 0.5f);
+        const float offB = juce::jmax(0.0f, (float) latencyFixed - lenB * 0.5f);
+        const float dA = juce::jlimit(0.0f, maxDelay, phaseA * lenA + offA);
+        const float dB = juce::jlimit(0.0f, maxDelay, phaseB * lenB + offB);
+        const float sA = std::sin(kPi * phaseA);
+        const float sB = std::sin(kPi * phaseB);
         const float gA = sA * sA;
-        const float gB = 1.0f - gA;
-        const float dA = phase * grain + offset;
-        const float dB = pB * grain + offset;
+        const float gB = sB * sB;
+        // Bei gleicher Fensterlaenge ist gA + gB = 1. Nur kurz nach einer Grain-Aenderung weicht es ab.
+        const float invSum = 1.0f / juce::jmax(0.2f, gA + gB);
 
         bool tick = false;
         if (rateActive)
@@ -206,7 +220,7 @@ void DoesitPitchProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
             auto& st = chState[(size_t) ch];
 
             const float dry = readAt(b, (float) latencyFixed);
-            float s = pitchActive ? (readAt(b, dA) * gA + readAt(b, dB) * gB) : dry;
+            float s = pitchActive ? (readAt(b, dA) * gA + readAt(b, dB) * gB) * invSum : dry;
 
             if (machineActive)
             {
@@ -247,12 +261,35 @@ void DoesitPitchProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::
                 s = st.warmLP;
             }
 
-            buffer.getWritePointer(ch)[i] = dry * (1.0f - mix) + s * mix;
+            float out = dry * (1.0f - mix) + s * mix;
+
+            // Sicherung: ungueltige Werte (NaN/unendlich) nie an den Host weitergeben
+            if (! std::isfinite(out))
+            {
+                out = 0.0f;
+                st = ChannelState();
+            }
+
+            buffer.getWritePointer(ch)[i] = out;
         }
 
-        phase += phaseInc;
-        while (phase >= 1.0f) phase -= 1.0f;
-        while (phase < 0.0f)  phase += 1.0f;
+        // Lesepunkte weiterbewegen. Am Fensterende (Lautstaerke 0) neu starten und die aktuelle Grain-Groesse uebernehmen.
+        phaseA += rate / lenA;
+        phaseB += rate / lenB;
+
+        if (! std::isfinite(phaseA)) phaseA = 0.0f;
+        if (! std::isfinite(phaseB)) phaseB = 0.5f;
+
+        if (phaseA >= 1.0f || phaseA < 0.0f)
+        {
+            phaseA -= std::floor(phaseA);
+            lenA = grain;
+        }
+        if (phaseB >= 1.0f || phaseB < 0.0f)
+        {
+            phaseB -= std::floor(phaseB);
+            lenB = grain;
+        }
 
         writePos = (writePos + 1) & bufMask;
     }
